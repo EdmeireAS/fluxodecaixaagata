@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Fluxo de Caixa - A Gata Semijoias</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f7f7f7;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      max-width: 800px;
+      margin: auto;
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    h1 {
+      text-align: center;
+      color: #d4af37;
+    }
+    input, select, button {
+      width: 100%;
+      padding: 10px;
+      margin: 8px 0;
+      box-sizing: border-box;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    table, th, td {
+      border: 1px solid #ccc;
+    }
+    th, td {
+      padding: 10px;
+      text-align: center;
+    }
+    .entrada { color: green; }
+    .saida { color: red; }
+    .botoes {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .acoes button {
+      margin: 0 4px;
+      padding: 6px 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Fluxo de Caixa</h1>
+
+    <input type="date" id="data" />
+    <input type="text" id="descricao" placeholder="Descrição" />
+    <input type="text" id="valor" placeholder="Valor (R$)" />
+    <select id="tipo">
+      <option value="entrada">Entrada</option>
+      <option value="saida">Saída</option>
+    </select>
+
+    <div class="botoes">
+      <button onclick="adicionarLancamento()">Adicionar Lançamento</button>
+      <button onclick="exportarCSV()">Exportar CSV</button>
+      <button onclick="exportarPDF()">Exportar PDF</button>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Data</th>
+          <th>Descrição</th>
+          <th>Tipo</th>
+          <th>Valor</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody id="tabela-lancamentos"></tbody>
+    </table>
+
+    <h2>Total: R$ <span id="total">0,00</span></h2>
+  </div>
+
+  <!-- Bibliotecas para exportar PDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+
+  <script>
+    let lancamentos = [];
+    let editandoIndex = -1;
+
+    window.onload = function () {
+      const dadosSalvos = localStorage.getItem("fluxoCaixa");
+      if (dadosSalvos) {
+        lancamentos = JSON.parse(dadosSalvos);
+        atualizarTabela();
+      }
+    };
+
+    function salvarNoLocalStorage() {
+      localStorage.setItem("fluxoCaixa", JSON.stringify(lancamentos));
+    }
+
+    function adicionarLancamento() {
+      const data = document.getElementById("data").value;
+      const descricao = document.getElementById("descricao").value;
+      const valorInput = document.getElementById("valor").value.replace(",", ".");
+      const valor = parseFloat(valorInput);
+      const tipo = document.getElementById("tipo").value;
+
+      if (!data || !descricao || isNaN(valor)) {
+        alert("Preencha todos os campos corretamente.");
+        return;
+      }
+
+      const novo = { data, descricao, valor, tipo };
+
+      if (editandoIndex >= 0) {
+        lancamentos[editandoIndex] = novo;
+        editandoIndex = -1;
+      } else {
+        lancamentos.push(novo);
+      }
+
+      salvarNoLocalStorage();
+      atualizarTabela();
+      limparCampos();
+    }
+
+    function atualizarTabela() {
+      const tabela = document.getElementById("tabela-lancamentos");
+      tabela.innerHTML = "";
+
+      // Ordenar por data (mais antiga primeiro)
+      lancamentos.sort((a, b) => new Date(a.data) - new Date(b.data));
+
+      let total = 0;
+      lancamentos.forEach((l, index) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${l.data}</td>
+          <td>${l.descricao}</td>
+          <td class="${l.tipo}">${l.tipo}</td>
+          <td class="${l.tipo}">R$ ${l.valor.toFixed(2).replace(".", ",")}</td>
+          <td class="acoes">
+            <button onclick="editarLancamento(${index})">✏️</button>
+            <button onclick="excluirLancamento(${index})">🗑️</button>
+          </td>
+        `;
+        tabela.appendChild(tr);
+        total += l.tipo === "entrada" ? l.valor : -l.valor;
+      });
+
+      document.getElementById("total").innerText = total.toFixed(2).replace(".", ",");
+    }
+
+    function limparCampos() {
+      document.getElementById("data").value = "";
+      document.getElementById("descricao").value = "";
+      document.getElementById("valor").value = "";
+      document.getElementById("tipo").value = "entrada";
+    }
+
+    function editarLancamento(index) {
+      const l = lancamentos[index];
+      document.getElementById("data").value = l.data;
+      document.getElementById("descricao").value = l.descricao;
+      document.getElementById("valor").value = l.valor.toFixed(2).replace(".", ",");
+      document.getElementById("tipo").value = l.tipo;
+      editandoIndex = index;
+    }
+
+    function excluirLancamento(index) {
+      if (confirm("Tem certeza que deseja excluir este lançamento?")) {
+        lancamentos.splice(index, 1);
+        salvarNoLocalStorage();
+        atualizarTabela();
+      }
+    }
+
+    function exportarCSV() {
+      if (lancamentos.length === 0) {
+        alert("Nenhum lançamento para exportar.");
+        return;
+      }
+
+      let csv = "Data,Descrição,Tipo,Valor\n";
+      lancamentos.forEach(l => {
+        csv += `${l.data},"${l.descricao}",${l.tipo},${l.valor.toFixed(2).replace(".", ",")}\n`;
+      });
+
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", "fluxo_de_caixa.csv");
+      link.style.display = "none";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    async function exportarPDF() {
+      if (lancamentos.length === 0) {
+        alert("Nenhum lançamento para exportar.");
+        return;
+      }
+
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+
+      const dataAtual = new Date().toLocaleString('pt-BR');
+      let total = lancamentos.reduce((acc, l) => acc + (l.tipo === "entrada" ? l.valor : -l.valor), 0);
+
+      doc.setFontSize(16);
+      doc.text("Fluxo de Caixa - A Gata Semijoias", 14, 20);
+      doc.setFontSize(10);
+      doc.text(`Gerado em: ${dataAtual}`, 14, 27);
+      doc.text(`Saldo Total: R$ ${total.toFixed(2).replace(".", ",")}`, 14, 34);
+
+      const rows = lancamentos.map(l => [
+        l.data,
+        l.descricao,
+        l.tipo,
+        `R$ ${l.valor.toFixed(2).replace(".", ",")}`
+      ]);
+
+      doc.autoTable({
+        head: [["Data", "Descrição", "Tipo", "Valor"]],
+        body: rows,
+        startY: 40,
+      });
+
+      doc.save("fluxo_de_caixa.pdf");
+    }
+  </script>
+</body>
+</html>
